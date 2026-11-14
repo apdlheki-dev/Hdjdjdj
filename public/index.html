@@ -3,217 +3,408 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>فاحص إيميلات الدومينات البريطانية</title>
+<title>فاحص إيميلات — من ملف</title>
 <style>
   :root{--bg:#0b0e13;--panel:#121821;--line:#1e2836;--txt:#e6edf3;--muted:#8b98a8;
-    --ok:#2ea043;--bad:#da3633;--warn:#d29922;--acc:#388bfd;}
+    --ok:#2ea043;--bad:#da3633;--warn:#d29922;--acc:#388bfd;--dim:#6e7681;}
   *{box-sizing:border-box}
   body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
     background:radial-gradient(1200px 600px at 70% -10%,#16202e 0%,var(--bg) 60%);
     color:var(--txt);min-height:100vh}
-  header{padding:26px 20px 8px;text-align:center}
-  h1{margin:0;font-size:1.55rem;letter-spacing:.3px}
+  header{padding:24px 20px 8px;text-align:center}
+  h1{margin:0;font-size:1.5rem}
   h1 span{color:var(--acc)}
-  .sub{color:var(--muted);font-size:.88rem;margin-top:6px}
-  main{max-width:960px;margin:0 auto;padding:14px 20px 60px}
+  .sub{color:var(--muted);font-size:.85rem;margin-top:6px}
+  main{max-width:1000px;margin:0 auto;padding:14px 20px 60px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;
     padding:20px;margin-top:16px}
   label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:8px}
-  textarea{width:100%;min-height:150px;resize:vertical;background:#0a0f16;
+  textarea{width:100%;min-height:120px;resize:vertical;background:#0a0f16;
     border:1px solid var(--line);border-radius:10px;color:var(--txt);padding:12px;
-    font-family:ui-monospace,Consolas,monospace;font-size:.88rem;line-height:1.5;outline:none}
+    font-family:ui-monospace,Consolas,monospace;font-size:.85rem;line-height:1.5;outline:none}
   textarea:focus{border-color:var(--acc)}
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px}
   button{background:var(--acc);color:#fff;border:0;border-radius:10px;
-    padding:11px 22px;font-weight:600;font-size:.95rem;cursor:pointer;transition:.15s transform}
+    padding:11px 22px;font-weight:600;font-size:.92rem;cursor:pointer;transition:.15s transform}
   button:hover{transform:translateY(-1px)}
-  button:disabled{opacity:.5;cursor:not-allowed;transform:none}
+  button:disabled{opacity:.45;cursor:not-allowed;transform:none}
   button.ghost{background:transparent;border:1px solid var(--line);color:var(--muted)}
+  button.danger{background:var(--bad)}
+  .drop{
+    border:2px dashed var(--line); border-radius:12px; padding:26px; text-align:center;
+    color:var(--muted); font-size:.9rem; cursor:pointer; transition:.2s;
+    background:#0a0f16;
+  }
+  .drop.hover{border-color:var(--acc);background:rgba(56,139,253,.05);color:var(--txt)}
+  .drop strong{color:var(--txt)}
   .toggle{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:.85rem;cursor:pointer}
   .toggle input{accent-color:var(--acc);width:16px;height:16px}
-  .allowed{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
-  .chip{font-family:ui-monospace,Consolas,monospace;font-size:.74rem;padding:4px 10px;
-    border-radius:999px;background:rgba(56,139,253,.12);border:1px solid rgba(56,139,253,.3);color:#9cc7ff}
-  .chip.warn{background:rgba(210,153,34,.12);border-color:rgba(210,153,34,.3);color:#e6c377}
-  #status{font-size:.85rem;color:var(--muted);margin-top:12px;min-height:1.2em}
-  table{width:100%;border-collapse:collapse;margin-top:14px;font-size:.85rem}
-  th,td{padding:9px 10px;text-align:right;border-bottom:1px solid var(--line);vertical-align:top}
-  th{color:var(--muted);font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.5px}
-  .mono{font-family:ui-monospace,Consolas,monospace;direction:ltr;text-align:left}
+
+  /* counters */
+  .counters{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:10px;
+    margin-top:16px;
+  }
+  .counter{
+    background:#0a0f16; border:1px solid var(--line); border-radius:12px;
+    padding:14px; text-align:center; position:relative; overflow:hidden;
+  }
+  .counter .n{
+    font-size:1.7rem; font-weight:700; font-variant-numeric:tabular-nums;
+    transition:color .3s;
+  }
+  .counter .l{color:var(--muted); font-size:.72rem; margin-top:4px; text-transform:uppercase; letter-spacing:.5px}
+  .counter.ok .n{color:var(--ok)}
+  .counter.bad .n{color:var(--bad)}
+  .counter.warn .n{color:var(--warn)}
+  .counter .pulse{
+    position:absolute; inset:0; background:rgba(46,160,67,.15); opacity:0;
+    animation:pulse .6s ease-out;
+  }
+  @keyframes pulse{0%{opacity:.6}100%{opacity:0}}
+
+  /* progress bar */
+  .progress{
+    height:6px; background:#0a0f16; border-radius:999px; overflow:hidden;
+    margin-top:12px; border:1px solid var(--line);
+  }
+  .progress > div{
+    height:100%; background:linear-gradient(90deg,#388bfd,#2ea043);
+    width:0%; transition:width .3s ease;
+  }
+
+  #status{font-size:.85rem;color:var(--muted);margin-top:10px;min-height:1.2em}
+
+  /* table */
+  .tableWrap{
+    max-height:600px; overflow-y:auto; margin-top:12px;
+    border:1px solid var(--line); border-radius:10px;
+  }
+  table{width:100%;border-collapse:collapse;font-size:.84rem}
+  th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--line);vertical-align:top}
+  th{
+    color:var(--muted);font-weight:600;font-size:.72rem;text-transform:uppercase;
+    letter-spacing:.5px; position:sticky; top:0; background:#0a0f16; z-index:2;
+  }
+  .mono{font-family:ui-monospace,Consolas,monospace;direction:ltr;text-align:left;word-break:break-all}
   .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:.72rem;font-weight:600}
   .pill.ok{background:rgba(46,160,67,.15);color:var(--ok);border:1px solid rgba(46,160,67,.3)}
   .pill.bad{background:rgba(218,54,51,.15);color:var(--bad);border:1px solid rgba(218,54,51,.3)}
   .pill.warn{background:rgba(210,153,34,.15);color:var(--warn);border:1px solid rgba(210,153,34,.3)}
-  .summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:14px}
-  .stat{background:#0a0f16;border:1px solid var(--line);border-radius:10px;padding:12px}
-  .stat .n{font-size:1.4rem;font-weight:700}
-  .stat .l{color:var(--muted);font-size:.75rem;margin-top:3px}
-  .note{color:var(--muted);font-size:.8rem;margin-top:10px;line-height:1.6}
+  .pill.dim{background:rgba(110,118,129,.15);color:var(--dim);border:1px solid rgba(110,118,129,.3)}
+  .note{color:var(--muted);font-size:.78rem;margin-top:10px;line-height:1.6}
+  .row-new{animation:rowIn .35s ease-out}
+  @keyframes rowIn{from{background:rgba(56,139,253,.12)}to{background:transparent}}
 </style>
 </head>
 <body>
 <header>
-  <h1>فاحص إيميلات <span>الدومينات البريطانية</span></h1>
-  <div class="sub">تحقق من الصيغة + MX + SPF + DMARC + SMTP</div>
+  <h1>فاحص إيميلات <span>من ملف</span></h1>
+  <div class="sub">رفع ملف → فحص فوري → عرض لحظي</div>
 </header>
 
 <main>
   <div class="card">
-    <label for="emails">الإيميلات — واحد في كل سطر (أو لصق مباشر من ملف)</label>
-    <textarea id="emails" placeholder="user@blueyonder.co.uk&#10;user@tiscali.co.uk&#10;user@doctors.org.uk"></textarea>
+    <label>ملف الإيميلات (txt / csv / كومبو — كل سطر إيميل)</label>
+    <div class="drop" id="dropZone">
+      <strong>اسحب الملف هنا</strong> أو اضغط للاختيار
+      <input type="file" id="fileInput" accept=".txt,.csv,.log,.list" hidden>
+    </div>
 
-    <div class="allowed" id="allowedChips"></div>
-
-    <div class="row">
-      <button id="runBtn">افحص</button>
+    <div class="row" style="margin-top:14px">
+      <button id="runBtn" disabled>ابدأ الفحص</button>
+      <button id="stopBtn" class="danger" disabled>إيقاف</button>
       <button id="exportBtn" class="ghost" disabled>تصدير CSV</button>
-      <button id="clearBtn" class="ghost">تفريغ</button>
-      <label class="toggle"><input type="checkbox" id="smtpToggle"> فحص SMTP (قد يفشل على المزودين الكبار)</label>
+      <button id="clearBtn" class="ghost">مسح</button>
+      <label class="toggle"><input type="checkbox" id="smtpToggle"> فحص SMTP</label>
+      <label class="toggle"><input type="checkbox" id="showRejected" checked> عرض المرفوض</label>
     </div>
-    <div id="status"></div>
-    <div class="note">
-      ملاحظة: فحص SMTP على المزودين الكبار (Hotmail/Yahoo/Blueyonder/Tiscali) يُتخطّى تلقائياً — سياستهم ترفض
-      الفحص بدون سياق حقيقي. الفحص الفعلي الفعّال هناك هو الصيغة + MX + SPF + DMARC.
-    </div>
-  </div>
 
-  <div class="card" id="summaryCard" style="display:none">
-    <div class="summary" id="summaryStats"></div>
+    <div class="counters">
+      <div class="counter" id="cTotal">
+        <div class="n" id="nTotal">0</div>
+        <div class="l">الإجمالي</div>
+        <div class="pulse" id="pTotal"></div>
+      </div>
+      <div class="counter ok" id="cOk">
+        <div class="n" id="nOk">0</div>
+        <div class="l">صيد</div>
+        <div class="pulse" id="pOk"></div>
+      </div>
+      <div class="counter bad" id="cBad">
+        <div class="n" id="nBad">0</div>
+        <div class="l">مرفوض</div>
+        <div class="pulse" id="pBad"></div>
+      </div>
+      <div class="counter warn" id="cErr">
+        <div class="n" id="nErr">0</div>
+        <div class="l">أخطاء</div>
+        <div class="pulse" id="pErr"></div>
+      </div>
+    </div>
+    <div class="progress"><div id="progressBar"></div></div>
+    <div id="status">لم يبدأ الفحص.</div>
   </div>
 
   <div class="card" id="resultCard" style="display:none">
-    <table>
-      <thead>
-        <tr>
-          <th>الإيميل</th>
-          <th>الصيغة</th>
-          <th>MX</th>
-          <th>SPF</th>
-          <th>DMARC</th>
-          <th>SMTP</th>
-        </tr>
-      </thead>
-      <tbody id="resultBody"></tbody>
-    </table>
+    <div class="tableWrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:38%">الإيميل</th>
+            <th style="width:12%">MX</th>
+            <th style="width:12%">SPF</th>
+            <th style="width:12%">DMARC</th>
+            <th style="width:12%">SMTP</th>
+            <th style="width:14%">الحالة</th>
+          </tr>
+        </thead>
+        <tbody id="resultBody"></tbody>
+      </table>
+    </div>
   </div>
 </main>
 
 <script>
 const $ = (id) => document.getElementById(id);
-let lastResults = [];
-let allowedSet = new Set();
-let bigProviderSet = new Set();
+const CHUNK_SIZE = 25;
+let allEmails = [];
+let results = [];
+let running = false;
+let stopRequested = false;
+let counters = { total: 0, ok: 0, bad: 0, err: 0 };
 
-function pill(state, text){
-  const cls = state === true ? "ok" : state === false ? "bad" : "warn";
-  return `<span class="pill ${cls}">${text}</span>`;
+// --- رفع الملف ---
+const drop = $("dropZone");
+const fileInput = $("fileInput");
+
+drop.addEventListener("click", () => fileInput.click());
+drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("hover"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("hover"));
+drop.addEventListener("drop", (e) => {
+  e.preventDefault(); drop.classList.remove("hover");
+  const f = e.dataTransfer.files[0];
+  if (f) readFile(f);
+});
+fileInput.addEventListener("change", () => {
+  if (fileInput.files[0]) readFile(fileInput.files[0]);
+});
+
+function readFile(file){
+  const reader = new FileReader();
+  reader.onload = () => {
+    const text = reader.result;
+    allEmails = parseEmailsFromText(text);
+    $("runBtn").disabled = allEmails.length === 0;
+    $("status").textContent = `تم تحميل ${allEmails.length} إيميل من الملف "${file.name}". جاهز للفحص.`;
+    drop.innerHTML = `<strong>✓ ${file.name}</strong> — ${allEmails.length} إيميل محمّل`;
+  };
+  reader.readAsText(file, "utf-8");
 }
 
-async function loadConfig(){
-  try{
-    const r = await fetch("/api/config").then(x => x.json());
-    allowedSet = new Set(r.allowedDomains);
-    bigProviderSet = new Set(r.bigProviderDomains);
-    const wrap = $("allowedChips");
-    wrap.innerHTML = "";
-    for(const d of r.allowedDomains){
-      const c = document.createElement("span");
-      c.className = "chip" + (r.bigProviderDomains.includes(d) ? " warn" : "");
-      c.textContent = d;
-      wrap.appendChild(c);
-    }
-  }catch{}
-}
-
-function parseEmails(raw){
-  return raw.split(/[\s,;]+/).map(s => s.trim().toLowerCase())
-    .filter(s => s.includes("@") && s.length > 3);
-}
-
-async function run(){
-  const list = parseEmails($("emails").value);
-  if(!list.length){ $("status").textContent = "ما فيه إيميلات صالحة."; return; }
-
-  $("runBtn").disabled = true;
-  $("exportBtn").disabled = true;
-  $("status").textContent = `جاري الفحص — ${list.length} إيميل...`;
-
-  try{
-    const res = await fetch("/api/check", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ emails: list, smtp: $("smtpToggle").checked })
-    });
-    const data = await res.json();
-    if(!res.ok){ throw new Error(data.error || `HTTP ${res.status}`); }
-    render(data);
-  }catch(e){
-    $("status").textContent = "خطأ: " + e.message;
-  }finally{
-    $("runBtn").disabled = false;
+// يقبل: إيميل في كل سطر، أو كومبو email:pass (يأخذ الإيميل فقط)
+function parseEmailsFromText(text){
+  const out = [];
+  const seen = new Set();
+  for (const raw of text.split(/\r?\n/)){
+    const line = raw.trim();
+    if (!line) continue;
+    // إزالة الباسورد إن وجد — نأخذ الجزء قبل أول : أو | أو ;
+    const emailPart = line.split(/[:|;]/)[0].trim().toLowerCase();
+    if (!emailPart.includes("@")) continue;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailPart)) continue;
+    if (seen.has(emailPart)) continue;
+    seen.add(emailPart);
+    out.push(emailPart);
   }
+  return out;
 }
 
-function render(data){
-  lastResults = data.results || [];
+// --- عدادات ---
+function setCounter(name, value){
+  counters[name] = value;
+  const map = {
+    total: ["nTotal", "pTotal"], ok: ["nOk", "pOk"],
+    bad: ["nBad", "pBad"], err: ["nErr", "pErr"],
+  };
+  const [nId, pId] = map[name];
+  $(nId).textContent = value;
+  const pulse = $(pId);
+  pulse.style.animation = "none";
+  void pulse.offsetWidth;
+  pulse.style.animation = "pulse .6s ease-out";
+}
 
-  // stats
-  const s = data.summary;
-  $("summaryStats").innerHTML = [
-    ["المجموع", s.total],
-    ["مقبول", s.accepted],
-    ["مرفوض (دومين/صيغة)", s.rejected],
-    ["SMTP صالح", s.smtpChecked],
-    ["SMTP مرفوض", s.smtpRejected],
-    ["SMTP غير محدد", s.smtpUnknown],
-  ].map(([l,n]) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
-  $("summaryCard").style.display = "block";
+function updateProgress(){
+  const done = counters.ok + counters.bad + counters.err;
+  const pct = counters.total ? (done / counters.total) * 100 : 0;
+  $("progressBar").style.width = pct + "%";
+}
 
-  // table
-  const body = $("resultBody");
-  body.innerHTML = "";
-  for(const r of lastResults){
-    const tr = document.createElement("tr");
-    const smtp = r.smtp
-      ? (r.smtp.ok === true ? pill(true, `صالح (${r.smtp.code||'?'})`) :
-         r.smtp.ok === false ? pill(false, `مرفوض (${r.smtp.code||'?'})`) :
-         pill(null, r.smtp.reason || "غير محدد"))
-      : `<span style="color:var(--muted)">—</span>`;
-    tr.innerHTML = `
-      <td class="mono">${r.email}</td>
-      <td>${pill(r.formatOk === false ? false : true, r.formatOk === false ? "خطأ" : "صالح")}</td>
-      <td>${pill(r.mxOk, r.mxOk ? "موجود" : "مفقود")}</td>
-      <td>${pill(!!r.spf, r.spf ? "موجود" : "مفقود")}</td>
-      <td>${pill(!!r.dmarc, r.dmarc ? "موجود" : "مفقود")}</td>
-      <td>${smtp}</td>`;
-    body.appendChild(tr);
-  }
-  $("resultCard").style.display = "block";
+// --- تصنيف ---
+function classify(r){
+  if (r.status === "rejected") return "bad";
+  if (r.status === "error") return "err";
+  // الإيميل مقبول (صيغة + دومين) — MX لازم يكون موجود
+  if (!r.mxOk) return "bad";
+  // SMTP: لو الفحص مفعّل وطلع false → مرفوض، غير ذلك → صيد
+  if (r.smtp && r.smtp.ok === false) return "bad";
+  return "ok";
+}
 
-  // rejected
-  if(data.rejected && data.rejected.length){
-    $("status").textContent = `خلص. ${data.rejected.length} إيميل مرفوض (دومين غير مسموح أو صيغة خاطئة).`;
+// --- عرض صف ---
+function renderRow(r, idx){
+  const tr = document.createElement("tr");
+  tr.className = "row-new";
+  tr.dataset.email = r.email;
+
+  let mxPill, spfPill, dmarcPill, smtpPill, statusPill;
+
+  if (r.status === "rejected"){
+    mxPill = spfPill = dmarcPill = smtpPill = `<span class="pill dim">—</span>`;
+    statusPill = `<span class="pill bad">مرفوض: ${r.reason || "—"}</span>`;
+  } else if (r.status === "error"){
+    mxPill = spfPill = dmarcPill = smtpPill = `<span class="pill dim">—</span>`;
+    statusPill = `<span class="pill bad">خطأ: ${r.reason || "—"}</span>`;
   } else {
-    $("status").textContent = `خلص — ${lastResults.length} إيميل.`;
+    mxPill = r.mxOk
+      ? `<span class="pill ok">موجود</span>`
+      : `<span class="pill bad">مفقود</span>`;
+    spfPill = r.spf
+      ? `<span class="pill ok">موجود</span>`
+      : `<span class="pill warn">مفقود</span>`;
+    dmarcPill = r.dmarc
+      ? `<span class="pill ok">موجود</span>`
+      : `<span class="pill warn">مفقود</span>`;
+    if (!r.smtp){
+      smtpPill = `<span class="pill dim">لم يُفحص</span>`;
+    } else if (r.smtp.ok === true){
+      smtpPill = `<span class="pill ok">صالح (${r.smtp.code || "?"})</span>`;
+    } else if (r.smtp.ok === false){
+      smtpPill = `<span class="pill bad">مرفوض (${r.smtp.code || "?"})</span>`;
+    } else {
+      smtpPill = `<span class="pill warn">${r.smtp.reason || "غير محدد"}</span>`;
+    }
+    const cls = classify(r);
+    statusPill = cls === "ok"
+      ? `<span class="pill ok">صيد ✓</span>`
+      : `<span class="pill bad">مرفوض</span>`;
   }
-  $("exportBtn").disabled = lastResults.length === 0;
+
+  tr.innerHTML = `
+    <td class="mono">${escapeHtml(r.email)}</td>
+    <td>${mxPill}</td>
+    <td>${spfPill}</td>
+    <td>${dmarcPill}</td>
+    <td>${smtpPill}</td>
+    <td>${statusPill}</td>`;
+  return tr;
 }
 
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[c]));
+}
+
+// --- إرسال دفعة ---
+async function checkBatch(batch){
+  const res = await fetch("/api/check-batch", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ emails: batch, smtp: $("smtpToggle").checked })
+  });
+  if (!res.ok){
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  return data.results || [];
+}
+
+// --- التشغيل الرئيسي ---
+async function run(){
+  if (!allEmails.length) return;
+  running = true;
+  stopRequested = false;
+  results = [];
+  counters = { total: allEmails.length, ok: 0, bad: 0, err: 0 };
+  $("resultBody").innerHTML = "";
+  $("resultCard").style.display = "block";
+  $("runBtn").disabled = true;
+  $("stopBtn").disabled = false;
+  $("exportBtn").disabled = true;
+  setCounter("total", allEmails.length);
+  setCounter("ok", 0); setCounter("bad", 0); setCounter("err", 0);
+  updateProgress();
+  $("status").textContent = `بدأ الفحص — ${allEmails.length} إيميل بدفعات ${CHUNK_SIZE}...`;
+
+  const chunks = [];
+  for (let i = 0; i < allEmails.length; i += CHUNK_SIZE) {
+    chunks.push(allEmails.slice(i, i + CHUNK_SIZE));
+  }
+
+  const showRejected = () => $("showRejected").checked;
+  const tbody = $("resultBody");
+
+  for (let ci = 0; ci < chunks.length; ci++){
+    if (stopRequested) break;
+    const chunk = chunks[ci];
+    $("status").textContent = `دفعة ${ci+1}/${chunks.length} — ${chunk.length} إيميل...`;
+
+    let batchResults;
+    try {
+      batchResults = await checkBatch(chunk);
+    } catch (e) {
+      // خطأ على مستوى الدفعة كاملة — نعلّم كل إيميلات الدفعة كخطأ
+      batchResults = chunk.map((email, i) => ({
+        email, status: "error", reason: "batch error: " + e.message
+      }));
+    }
+
+    for (const r of batchResults){
+      results.push(r);
+      const cls = classify(r);
+      // skip rejected في العرض إذا المستخدم أطفأ الخيار
+      if (r.status === "rejected" && !showRejected()) continue;
+      const tr = renderRow(r);
+      tbody.appendChild(tr);
+      // تحديث العداد
+      setCounter("ok", counters.ok + (cls === "ok" ? 1 : 0));
+      setCounter("bad", counters.bad + (cls === "bad" ? 1 : 0));
+      setCounter("err", counters.err + (cls === "err" ? 1 : 0));
+      updateProgress();
+      // auto scroll
+      tr.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }
+
+  running = false;
+  $("runBtn").disabled = false;
+  $("stopBtn").disabled = true;
+  $("exportBtn").disabled = results.length === 0;
+  if (stopRequested){
+    $("status").textContent = `تم الإيقاف — ${counters.ok + counters.bad + counters.err}/${counters.total}.`;
+  } else {
+    $("status").textContent = `خلص — صيد: ${counters.ok} | مرفوض: ${counters.bad} | أخطاء: ${counters.err}`;
+  }
+}
+
+// --- CSV ---
 function exportCsv(){
-  if(!lastResults.length) return;
-  const headers = ["email","format","mx_ok","spf","dmarc","smtp_state","smtp_code","smtp_reason"];
+  if (!results.length) return;
+  const headers = ["email","status","mx_ok","spf","dmarc","smtp_state","smtp_code","smtp_reason"];
   const lines = [headers.join(",")];
-  for(const r of lastResults){
+  for (const r of results){
     const smtpState = r.smtp ? (r.smtp.ok === true ? "valid" : r.smtp.ok === false ? "invalid" : "unknown") : "skipped";
     const row = [
-      r.email,
-      r.formatOk === false ? "invalid" : "valid",
+      r.email, r.status || "",
       r.mxOk ? "yes" : "no",
       r.spf ? "yes" : "no",
       r.dmarc ? "yes" : "no",
       smtpState,
       r.smtp?.code || "",
-      (r.smtp?.reason || r.smtp?.message || "").replace(/,/g, ";"),
+      (r.smtp?.reason || r.smtp?.message || r.reason || "").replace(/,/g, ";"),
     ];
     lines.push(row.join(","));
   }
@@ -224,15 +415,26 @@ function exportCsv(){
   a.click();
 }
 
+// --- ربط ---
 $("runBtn").addEventListener("click", run);
+$("stopBtn").addEventListener("click", () => { stopRequested = true; });
 $("exportBtn").addEventListener("click", exportCsv);
 $("clearBtn").addEventListener("click", () => {
-  $("emails").value = ""; $("resultBody").innerHTML = "";
-  $("resultCard").style.display = "none"; $("summaryCard").style.display = "none";
-  $("status").textContent = ""; $("exportBtn").disabled = true;
+  if (running) return;
+  allEmails = []; results = [];
+  counters = { total: 0, ok: 0, bad: 0, err: 0 };
+  $("resultBody").innerHTML = "";
+  $("resultCard").style.display = "none";
+  setCounter("total", 0); setCounter("ok", 0); setCounter("bad", 0); setCounter("err", 0);
+  updateProgress();
+  $("status").textContent = "لم يبدأ الفحص.";
+  drop.innerHTML = `<strong>اسحب الملف هنا</strong> أو اضغط للاختيار
+    <input type="file" id="fileInput" accept=".txt,.csv,.log,.list" hidden>`;
+  // إعادة ربط input
+  $("fileInput").addEventListener("change", () => {
+    if ($("fileInput").files[0]) readFile($("fileInput").files[0]);
+  });
 });
-
-loadConfig();
 </script>
 </body>
 </html>
