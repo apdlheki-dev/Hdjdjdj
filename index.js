@@ -6,29 +6,9 @@ const net = require("net");
 const config = require("./config");
 
 const app = express();
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "5mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
-// ---------- rate limiter ----------
-const ipBuckets = new Map();
-function rateLimit(req, res, next) {
-  const ip = req.ip || req.socket.remoteAddress || "unknown";
-  const now = Date.now();
-  const win = 60_000;
-  let bucket = ipBuckets.get(ip);
-  if (!bucket || now - bucket.start > win) {
-    bucket = { start: now, count: 0 };
-    ipBuckets.set(ip, bucket);
-  }
-  bucket.count++;
-  if (bucket.count > config.maxRequestsPerMinutePerIp) {
-    return res.status(429).json({ error: "too many requests" });
-  }
-  next();
-}
-app.use("/api/", rateLimit);
-
-// ---------- أدوات ----------
 const EMAIL_RE = /^[a-z0-9._%+\-]+@([a-z0-9.\-]+\.[a-z]{2,})$/i;
 
 function rootDomainOf(host) {
@@ -84,16 +64,21 @@ async function getTxtPolicy(domain) {
 function smtpVerify(mxHost, email, opts = {}) {
   return new Promise((resolve) => {
     const timeout = opts.timeout || config.smtpTimeoutMs;
-    const sock = net.createConnection({ host: mxHost, port: config.smtpPort });
-    let step = "greet";
-    let buffer = "";
+    let sock;
     let resolved = false;
     const finish = (r) => {
       if (resolved) return;
       resolved = true;
-      try { sock.destroy(); } catch {}
+      try { sock && sock.destroy(); } catch {}
       resolve(r);
     };
+    try {
+      sock = net.createConnection({ host: mxHost, port: config.smtpPort });
+    } catch (e) {
+      return finish({ ok: "unknown", reason: "connect: " + e.message, mxHost });
+    }
+    let step = "greet";
+    let buffer = "";
     sock.setTimeout(timeout);
     sock.on("timeout", () => finish({ ok: "unknown", reason: "timeout", mxHost }));
     sock.on("error", (e) => finish({ ok: "unknown", reason: e.code || e.message, mxHost }));
@@ -129,37 +114,15 @@ function smtpVerify(mxHost, email, opts = {}) {
   });
 }
 
-// ---------- API ----------
-app.get("/api/config", (req, res) => {
-  res.json({
-    allowedDomains: config.allowedDomains,
-    bigProviderDomains: config.bigProviderDomains,
-    maxEmailsPerRequest: config.maxEmailsPerRequest,
-    smtpEnabled: config.smtpPort === 25,
-  });
-});
-
-app.post("/api/check", async (req, res) => {
+// endpoint: معالجة دفعة واحدة، كل إيميل مستقل بـ try/catch
+app.post("/api/check-batch", async (req, res) => {
   const raw = Array.isArray(req.body?.emails) ? req.body.emails : [];
   const doSmtp = !!req.body?.smtp;
-  if (!raw.length) return res.status(400).json({ error: "no emails provided" });
-  if (raw.length > config.maxEmailsPerRequest)
-    return res.status(400).json({ error: `max ${config.maxEmailsPerRequest} emails per request` });
-
-  const cleaned = [];
-  const rejected = [];
-  for (const e of raw) {
-    const email = String(e || "").trim().toLowerCase();
-    if (!email) continue;
-    const m = EMAIL_RE.exec(email);
-    if (!m) { rejected.push({ email, reason: "invalid format" }); continue; }
-    const host = m[1];
-    if (!isAllowed(host)) { rejected.push({ email, reason: "domain not allowed" }); continue; }
-    cleaned.push({ email, host, root: rootDomainOf(host) });
-  }
+  if (!raw.length) return res.status(400).json({ error: "no emails" });
 
   const policyCache = new Map();
   const mxCache = new Map();
+
   async function getPolicy(root) {
     if (!policyCache.has(root)) policyCache.set(root, await getTxtPolicy(root));
     return policyCache.get(root);
@@ -169,60 +132,77 @@ app.post("/api/check", async (req, res) => {
     return mxCache.get(root);
   }
 
-  async function checkOne(item) {
-    const policy = await getPolicy(item.root);
-    const mx = await getMxSafe(item.root);
-    const out = {
-      email: item.email, host: item.host, root: item.root,
-      formatOk: true, mxOk: mx.ok, mxHost: mx.records[0] || null,
-      spf: policy.spf, dmarc: policy.dmarc, smtp: null,
-    };
-    if (doSmtp && mx.ok) {
-      if (config.bigProviderDomains.includes(item.root)) {
-        out.smtp = { ok: "unknown", reason: "big provider - skipped", mxHost: out.mxHost };
-      } else {
-        out.smtp = await smtpVerify(out.mxHost, item.email);
-      }
-    }
-    return out;
-  }
-
   const results = [];
-  const queue = cleaned.slice();
-  const workers = Array.from({ length: Math.min(4, queue.length) }, async () => {
+  // معالجة متوازية محدودة — 4 في نفس الوقت
+  const queue = raw.map((e, i) => ({ idx: i, email: String(e || "").trim().toLowerCase() }));
+  async function worker() {
     while (queue.length) {
       const item = queue.shift();
-      try { results.push(await checkOne(item)); }
-      catch (e) { results.push({ email: item.email, error: e.message }); }
+      if (!item || !item.email) continue;
+      try {
+        const m = EMAIL_RE.exec(item.email);
+        if (!m) {
+          results.push({
+            idx: item.idx, email: item.email, status: "rejected",
+            reason: "invalid format",
+          });
+          continue;
+        }
+        const host = m[1];
+        if (!isAllowed(host)) {
+          results.push({
+            idx: item.idx, email: item.email, host,
+            status: "rejected", reason: "domain not allowed",
+          });
+          continue;
+        }
+        const root = rootDomainOf(host);
+        const [policy, mx] = await Promise.all([getPolicy(root), getMxSafe(root)]);
+
+        const out = {
+          idx: item.idx, email: item.email, host, root,
+          status: "ok",
+          mxOk: mx.ok, mxHost: mx.records[0] || null,
+          spf: policy.spf, dmarc: policy.dmarc,
+          smtp: null,
+        };
+
+        if (doSmtp && mx.ok) {
+          try {
+            if (config.bigProviderDomains.includes(root)) {
+              out.smtp = { ok: "unknown", reason: "big provider - skipped" };
+            } else {
+              out.smtp = await smtpVerify(out.mxHost, item.email);
+            }
+          } catch (e) {
+            out.smtp = { ok: "unknown", reason: "smtp exception: " + e.message };
+          }
+        }
+        results.push(out);
+      } catch (e) {
+        results.push({
+          idx: item.idx, email: item.email, status: "error",
+          reason: e.message,
+        });
+      }
     }
-  });
-  await Promise.all(workers);
-
-  const summary = {
-    total: cleaned.length + rejected.length,
-    accepted: cleaned.length,
-    rejected: rejected.length,
-    smtpChecked: results.filter(r => r.smtp && r.smtp.ok === true).length,
-    smtpRejected: results.filter(r => r.smtp && r.smtp.ok === false).length,
-    smtpUnknown: results.filter(r => r.smtp && r.smtp.ok === "unknown").length,
-    byDomain: {},
-  };
-  for (const r of results) {
-    if (!r.root) continue;
-    summary.byDomain[r.root] = summary.byDomain[r.root] || { count: 0, mxOk: 0, spf: false, dmarc: false };
-    summary.byDomain[r.root].count++;
-    if (r.mxOk) summary.byDomain[r.root].mxOk++;
-    if (r.spf) summary.byDomain[r.root].spf = true;
-    if (r.dmarc) summary.byDomain[r.root].dmarc = true;
   }
+  await Promise.all(Array.from({ length: Math.min(4, queue.length) }, worker));
 
-  res.json({ summary, results, rejected });
+  // ترتيب حسب idx الأصلي
+  results.sort((a, b) => a.idx - b.idx);
+  res.json({ results });
 });
 
-// ---------- Vercel export ----------
+app.get("/api/config", (req, res) => {
+  res.json({
+    allowedDomains: config.allowedDomains,
+    bigProviderDomains: config.bigProviderDomains,
+  });
+});
+
 module.exports = app;
 
-// ---------- local dev only ----------
 if (require.main === module) {
   app.listen(config.port, () => {
     console.log(`UK Email Checker → http://localhost:${config.port}`);
